@@ -1,0 +1,23 @@
+{
+  "sets": [
+    {
+      "name": "Italian",
+      "front_label": "English",
+      "back_label": "Italian",
+      "cards": [
+        {
+          "front": "Hi",
+          "back": "Ciao"
+        },
+        {
+          "front": "Wood",
+          "back": "Legno"
+        },
+        {
+          "front": "Family",
+          "back": "Famiglia"
+        }
+      ]
+    }
+  ]
+}
