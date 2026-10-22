@@ -4,6 +4,7 @@ import random
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
+from urllib.parse import quote, unquote
 
 
 LEGACY_DATA_FILE = Path(__file__).with_name("italian_english_flashcards.json")
@@ -25,6 +26,7 @@ class FlashcardApp:
         self.test_deck = []
         self.test_index = 0
         self.test_score = 0
+        self.test_answer_count = 0
         self.test_answered = False
         self.test_running = False
 
@@ -105,7 +107,7 @@ class FlashcardApp:
                             cards.append({"front": row[0], "back": row[1]})
                     loaded_sets.append(
                         {
-                            "name": csv_path.stem,
+                            "name": unquote(csv_path.stem),
                             "front_label": headers[0].strip(),
                             "back_label": headers[1].strip(),
                             "file_name": csv_path.stem,
@@ -178,10 +180,7 @@ class FlashcardApp:
         return [self.default_set()]
 
     def make_file_name(self, name, other_file_names=(), ignore_file_name=None):
-        invalid = '<>:"/\\|?*'
-        base_name = "".join(
-            "_" if character in invalid or ord(character) < 32 else character for character in name
-        ).strip(" .") or "Flashcards"
+        base_name = quote(name.strip(), safe=" ()_-") or "Flashcards"
         reserved = {file_name.casefold() for file_name in other_file_names}
         candidate = base_name
         suffix = 2
@@ -684,10 +683,16 @@ class FlashcardApp:
             self.test_tab, textvariable=self.test_feedback, wraplength=700
         )
         self.test_feedback_label.pack(anchor="w", pady=(12, 4))
-        self.test_action_button = ttk.Button(
-            self.test_tab, text="Start test", command=self.begin_test
+        test_buttons = ttk.Frame(self.test_tab)
+        test_buttons.pack(fill="x", pady=(8, 0))
+        self.end_test_button = ttk.Button(
+            test_buttons, text="End test", command=self.end_test, state="disabled"
         )
-        self.test_action_button.pack(anchor="e", pady=(8, 0))
+        self.end_test_button.pack(side="left")
+        self.test_action_button = ttk.Button(
+            test_buttons, text="Start test", command=self.begin_test
+        )
+        self.test_action_button.pack(side="right")
 
     def begin_test(self):
         selected_indices = self.test_set_listbox.curselection()
@@ -712,9 +717,11 @@ class FlashcardApp:
         random.shuffle(self.test_deck)
         self.test_index = 0
         self.test_score = 0
+        self.test_answer_count = 0
         self.test_running = True
         self.test_direction_picker.configure(state="disabled")
         self.test_set_listbox.configure(state=tk.DISABLED)
+        self.end_test_button.configure(state="normal")
         self.test_action_button.configure(text="Check answer", command=self.handle_test_action)
         self.answer_entry.configure(state="normal")
         self.show_test_card()
@@ -739,6 +746,7 @@ class FlashcardApp:
             card = self.test_deck[self.test_index]
             target = "back" if self.test_direction.get() == "Front to back" else "front"
             expected = card[target]
+            self.test_answer_count += 1
             if self.answer_var.get().casefold() == expected.casefold():
                 self.test_score += 1
                 self.test_feedback.set("Correct.")
@@ -746,6 +754,8 @@ class FlashcardApp:
             else:
                 self.test_feedback.set(f"Spelling does not match. Correct answer: {expected}")
                 self.test_feedback_label.configure(style="Incorrect.TLabel")
+                retry_position = min(self.test_index + 7, len(self.test_deck))
+                self.test_deck.insert(retry_position, card.copy())
             self.test_answered = True
             self.answer_entry.configure(state="disabled")
             last_card = self.test_index == len(self.test_deck) - 1
@@ -758,18 +768,29 @@ class FlashcardApp:
             self.test_index += 1
             self.show_test_card()
 
-    def finish_test(self):
-        total = len(self.test_deck)
+    def end_test(self):
+        if self.test_running:
+            self.finish_test(ended=True)
+
+    def finish_test(self, ended=False):
         self.test_running = False
         self.test_direction_picker.configure(state="readonly")
         self.test_set_listbox.configure(state=tk.NORMAL)
-        self.test_question.set("Test complete")
-        self.test_progress.set(f"Score: {self.test_score} / {total}")
-        self.test_feedback.set(
-            "All answers matched." if self.test_score == total else "Review the cards you missed."
-        )
+        self.end_test_button.configure(state="disabled")
+        self.test_question.set("Test ended" if ended else "Test complete")
+        self.test_progress.set(f"Score: {self.test_score} / {self.test_answer_count}")
+        if ended:
+            self.test_feedback.set("Test stopped.")
+        else:
+            self.test_feedback.set(
+                "All answers matched."
+                if self.test_score == self.test_answer_count
+                else "Review the cards you missed."
+            )
         self.test_feedback_label.configure(
-            style="Correct.TLabel" if self.test_score == total else "Incorrect.TLabel"
+            style="Correct.TLabel"
+            if self.test_score == self.test_answer_count
+            else "Incorrect.TLabel"
         )
         self.answer_var.set("")
         self.answer_entry.configure(state="disabled")
